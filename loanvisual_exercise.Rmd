@@ -1,0 +1,53 @@
+---
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r,warning=FALSE,message=FALSE}
+library(tidyverse)
+library(ggplot2)
+library(scales)
+sba <- read_csv("https://uofi.box.com/shared/static/vi37omgitiaa2yyplrom779qvwk1g14x.csv", 
+    col_types = cols(ApprovalDate = col_date(format = "%d-%b-%y"),
+                     BalanceGross = col_number(), ChgOffDate = col_date(format = "%d-%b-%y"),
+                     ChgOffPrinGr = col_number(), DisbursementDate = col_date(format ="%d-%b-%y"),
+                     DisbursementGross = col_number(),
+                     ApprovalFY = col_integer(),
+                     GrAppv = col_number(), SBA_Appv = col_number()))
+colnames(sba) <- tolower(colnames(sba))
+```
+
+```{r}
+area <- factor(sba$urbanrural,c(0,1,2),labels=c("Undefined","Urban","Rural"))
+meow <- table(area,sba$mis_status)
+```
+
+```{r}
+group_by(sba,newexist)
+sba$estb <- ifelse(sba$newexist==2,"No","Yes")
+sba$ms_new <- ifelse(sba$mis_status=="P I F","Paid in Full","Defaulted")
+#table1 <- table(sba$estb,area,sba$ms_new);table1
+#ftable(round(prop.table(table1)*100, 2))
+#deflab <- c(24.49,1.70,8.94,0.86,28.71,9.12,10.79,3.68,6.36,1.46,3.15,0.73)
+```
+
+
+```{r}
+theme_set(theme_minimal())
+ggplot(data=sba,aes(x=factor(estb),y =(..count..)/sum(..count..),fill=factor(ms_new)))+
+  geom_bar(width=.75,na.rm=TRUE)+
+  scale_y_continuous(labels=percent)+
+  facet_wrap(~factor(area),ncol=1)+
+  labs(x="Established Business?",y="Percentage",title="Loan Result by Area & Establishment of Businesses")+
+  guides(fill=guide_legend(title="Loan Status"))+
+  coord_flip()
+```
+
+
+
+
+
+
+
+
