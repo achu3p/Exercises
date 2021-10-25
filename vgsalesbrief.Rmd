@@ -1,0 +1,254 @@
+---
+output:
+  pdf_document: default
+  html_document: default
+---
+# Data Source
+The data explored was taken from Kaggle: [Video Game Sales with Ratings](https://www.kaggle.com/rush4ratio/video-game-sales-with-ratings).
+
+# Reading the Data
+```{r,results='hide',warning=FALSE,message=FALSE}
+#Importing libraries.
+library(tidyverse)
+library(tidytext)
+library(dplyr)
+library(data.table)
+library(ggplot2)
+library(knitr)
+library(stringr)
+
+#Loading the dataset from local storage.
+vgsale <- read_csv("C:/Users/achu3/Documents/datasets/Video_Games_Sales_as_at_22_Dec_2016.csv/Video_Games_Sales_as_at_22_Dec_2016.csv")
+```
+# Data Cleaning & Manipulation
+```{r,message=FALSE,warning=FALSE}
+str(vgsale)
+summary(vgsale)
+```
+```{r,message=FALSE,warning=FALSE}
+#Missing Value Inspection & Filter
+vgsale <- vgsale%>%filter(!is.na(Name)) #only clearing character NAs
+
+#Transforming user/critic scores, release years, and similar to numeric format for use.
+vgsale1 <- transform(vgsale,User_Score=as.numeric(User_Score),Year_of_Release=as.numeric(Year_of_Release)) #char->num
+```
+
+```{r,message=FALSE,warning=FALSE}
+vgsale1%>%ggplot(aes(x=Year_of_Release))+
+  geom_histogram(stat="count",fill="#0072B2")+ #I like #0072b2 as a colorblind-friendly option.
+  labs(title="release year range in dataset")
+```
+This dataset includes data from Metacritic, such as critic and user scores, 
+which was launched in 1999.
+Since we will be using its metrics to explore publishers' performance, 
+we will filter out games from 1999 to the most recent year covered 
+in the dataset (2016).
+```{r}
+vgsale2 <- vgsale1%>%filter(Year_of_Release>=1999) #I prefer creating new datasets for bigger manipulations in case I need to quickly return to a previous version of the data.
+```
+
+```{r,results='hide'}
+#Publisher subsidiaries are merged & renamed with parent companies.
+levels(factor(vgsale2$Publisher)) #ls unique names;brief googling if unsure about similar names
+#Activision*;Codemasters & Codemasters Online appear to be different;EA Games, Electronic Arts*;Enix Corp, Square* (including squaresoft);Idea Factory*;Marvelous*;Rebellion*;Sony*;Ubisoft*;Zoo*, Zushi Games
+#Unknown = Unknown Worlds? check game of obsv
+vgsale2$Publisher <- sub("^Activision.*","Activision",vgsale2$Publisher)
+vgsale2$Publisher <- sub("^Electronic Arts.*","Electronic Arts",vgsale2$Publisher)
+vgsale2$Publisher <- sub("EA Games","Electronic Arts",vgsale2$Publisher)
+vgsale2$Publisher <- sub("^Square.*","Square Enix",vgsale2$Publisher)
+vgsale2$Publisher <- sub("^Enix.*","Square Enix",vgsale2$Publisher)
+vgsale2$Publisher <- sub("^Idea Factory.*","Idea Factory",vgsale2$Publisher)
+vgsale2$Publisher <- sub("^Marvelous.*","Marvelous Inc",vgsale2$Publisher)
+vgsale2$Publisher <- sub("^Rebellion.*","Rebellion",vgsale2$Publisher)
+vgsale2$Publisher <- sub("^Sony.*","Sony",vgsale2$Publisher)
+vgsale2$Publisher <- sub("^Ubisoft.*","Ubisoft",vgsale2$Publisher)
+vgsale2$Publisher <- sub("^Zoo.*","Zoo Games",vgsale2$Publisher)
+vgsale2$Publisher <- sub("^Zushi Games.*","Zoo Games",vgsale2$Publisher)
+
+#Sort multiples (ex. Activision - CoD:BOII) by platform.
+vgsale2$Name_Platform <- paste(vgsale2$Name,vgsale2$Platform,sep=", ")
+```
+
+Exploring - publisher focus.
+```{r,message=FALSE,warning=FALSE}
+#What are the top ten publishing companies? by global sale
+pubsales <- vgsale2%>%group_by(Publisher)%>%
+  summarise(pubttlsale=sum(Global_Sales))%>%
+  arrange(desc(pubttlsale))%>%
+  top_n(10)%>%
+  mutate(wrapname=str_wrap(Publisher,width=15))
+pubsales%>%ggplot(aes(x=reorder(wrapname,pubttlsale),y=pubttlsale))+
+  geom_bar(stat="identity",fill="#0072B2")+
+  coord_flip()+
+  labs(x="Publisher",y="Total Sales (millions of copies)",
+       title="Top 10 Video Game Publishers by Global Sales",subtitle="1999-2016")
+```
+```{r,message=FALSE,warning=FALSE}
+#What are the top ten games by publishing companies? by global sale
+topgamesale <- vgsale2%>%top_n(10,Global_Sales)%>%mutate(wrapname=str_wrap(Name,width=15))
+topgamesale%>%ggplot(aes(x=reorder(wrapname,Global_Sales),y=Global_Sales))+
+  geom_bar(stat="identity",fill="#0072B2",position="dodge")+
+  coord_flip()+
+  labs(x="Game",y="Total Sales (millions of copies)",
+       title="Top 10 Games by Global Sales",subtitle="1999-2016")
+#Nintendo dominates in sales.
+#Why is that?
+```
+
+```{r,message=FALSE,warning=FALSE}
+#What genres do publishers create best?
+
+#top 5 games(sales)/top 5 publisher (w/Genre) (top 5 to narrow focus)
+#This gives us a brief look as to what type of games do well per publisher.
+#ex. Activation is pure shooter, while Nintendo has the most variety.
+pubsales_5 <- vgsale2%>%group_by(Publisher)%>%
+  summarise(pubttlsale=sum(Global_Sales))%>%
+  arrange(desc(pubttlsale))%>%
+  top_n(5) #top five publishers from prev top pub subset
+topgamesale2 <- vgsale2%>%group_by(Publisher)%>%filter(Publisher%in%pubsales_5$Publisher)%>%
+  select(Name_Platform,Publisher,Genre,Global_Sales)%>%
+  arrange(desc(Global_Sales))%>%
+  top_n(5) #top five games/publisher by sale
+topgamesale2 <- topgamesale2%>%mutate(Publisher=reorder(Publisher,-Global_Sales),#order pub by sales
+                                      Name_Platform=reorder_within(
+                                        Name_Platform,Global_Sales,Publisher,fun=sum)) #order name by sales per pub
+topgamesale2%>%ggplot(aes(x=Global_Sales,y=Name_Platform,fill=Genre))+
+  geom_col()+ #functions the same as flipped geombar(identity)
+  #geom_text(aes(label=Global_Sales),hjust=1)+
+  facet_wrap(~Publisher,ncol=1,scales="free_y")+
+  scale_y_reordered()+
+  labs(x="Total Sales (millions of copies)",y="Game",
+       title="Top Five Games per Publisher by Global Sales",subtitle="1999-2016")
+```
+
+```{r,message=FALSE,warning=FALSE}
+#top 3 genres(sales)/top 5 publisher
+#A more pure/diverse look than before.
+topgenrepub <- vgsale2%>%filter(Publisher%in%pubsales_5$Publisher)%>%
+  select(Publisher,Genre,Global_Sales)%>%
+  group_by(Genre,Publisher)%>%
+  summarise(genrettlsale=sum(Global_Sales))%>%
+  arrange(desc(genrettlsale))%>%
+  group_by(Publisher)%>%
+  top_n(3)%>%
+  mutate(Publisher=reorder(Publisher,-genrettlsale),
+         Genre=reorder_within(Genre,genrettlsale,Publisher,fun=sum))
+topgenrepub%>%ggplot(aes(x=genrettlsale,y=Genre))+
+  geom_col(fill="#0072B2")+
+  facet_wrap(~Publisher,ncol=1,scales="free_y")+
+  scale_y_reordered()+
+  labs(x="Total Sales (millions of copies",y="Genre",
+       title="Top 3 Genres per Publisher by Global Sales",subtitle="1999-2016")
+#most frequently - sports, shooter, action;
+#Nintendo seems to specialize with platforming games; has unique range compared to others
+#confirms Activision & shooters; EA dominates sports (in terms of sales)
+```
+
+```{r,message=FALSE,warning=FALSE}
+####look into the percentage sales per genre per publisher
+
+#Do these sales match with score?
+#average user score of games/publisher
+topuserscorepub <- vgsale2%>%filter(Publisher%in%pubsales$Publisher)%>%filter(User_Count>=40)%>%
+  select(Publisher,User_Score)%>%
+  group_by(Publisher)%>%
+  summarise(avguserscore=mean(User_Score))%>%
+  mutate(wrappub=str_wrap(Publisher,width=15)) 
+topuserscorepub%>%ggplot(aes(x=reorder(wrappub,-avguserscore),y=avguserscore))+
+  geom_bar(stat="identity",fill="#0072B2")+
+  labs(x="Publisher",y="Average User Score",title="Average User Score of Games by Publisher",subtitle="1999-2016")
+```
+```{r,message=FALSE,warning=FALSE}
+#average critic score of games/publisher
+topcriticscorepub <- vgsale2%>%filter(Publisher%in%pubsales$Publisher)%>%filter(Critic_Count>=40)%>%
+  group_by(Publisher)%>%
+  summarise(avgcriticscore=mean(Critic_Score))%>%
+  mutate(wrappub=str_wrap(Publisher,width=15))
+topcriticscorepub%>%ggplot(aes(x=reorder(wrappub,-avgcriticscore),y=avgcriticscore))+
+  geom_bar(stat="identity",fill="#0072B2")+
+  labs(x="Publisher",y="Average Critic Score",title="Average Critic Score of Games by Publisher",subtitle="1999-2016")
+#Not much to see in terms of publisher score - scores are fairly close together.
+```
+
+```{r,message=FALSE,warning=FALSE}
+##Platform
+#most games on a platform
+levels(factor(vgsale2$Platform))
+vgsale2%>%ggplot(aes(x=Platform))+
+  geom_histogram(stat="count",fill="#0072B2")
+```
+
+```{r,message=FALSE,warning=FALSE}
+##Genre
+vgsale2%>%ggplot(aes(x=Genre))+
+  geom_histogram(stat="count",fill="#0072B2") #game/genre
+```
+
+```{r,message=FALSE,warning=FALSE}
+genresale <- vgsale2%>%group_by(Genre)%>%
+  summarise(genrettlsale=sum(Global_Sales))%>%
+  arrange(desc(genrettlsale))
+genresale%>%ggplot(aes(x=reorder(Genre,genrettlsale),y=genrettlsale))+
+  geom_bar(stat="identity",fill="#0072B2")+
+  coord_flip()+
+  labs(x="Genre",y="Total Sales (millions of copies)",title="Total Video Game Sales by Genre",subtitle="1999-2016")
+#but is action, sports rated highly?
+#who buys these? what region? region&score genre
+```
+
+```{r,message=FALSE,warning=FALSE}
+genreuser <- vgsale2%>%filter(User_Count>=40)%>%
+  group_by(Genre)%>%
+  summarise(avgscore_user=mean(User_Score))%>%
+  arrange(desc(avgscore_user))
+genreuser%>%ggplot(aes(x=reorder(Genre,avgscore_user),y=avgscore_user))+
+  geom_bar(stat="identity",fill="#0072B2")+
+  coord_flip()+
+  labs(x="Genre",y="Average User Score",title="Averge User Score by Video Game Genre",subtitle="Metacritic, 1999-2016")
+```
+
+```{r,message=FALSE,warning=FALSE}
+criticuser <- vgsale2%>%filter(Critic_Count>=40)%>%
+  group_by(Genre)%>%
+  summarise(avgscore_critic=mean(Critic_Score))%>%
+  arrange(desc(avgscore_critic))
+criticuser%>%ggplot(aes(x=reorder(Genre,avgscore_critic),y=avgscore_critic))+
+  geom_bar(stat="identity",fill="#0072B2")+
+  coord_flip()+
+  labs(x="Genre",y="Average Critic Score",title="Average Critic Score by Video Game Genre",subtitle="Metacritic, 1999-2016")
+#seemingly not too much difference w/in groups, although top differs 
+```
+
+```{r,message=FALSE,warning=FALSE}
+#Highest Rated Games (User Score)
+hiscore_user <- vgsale2%>%filter(User_Count>=40)%>%
+  select(Name,User_Score)%>%
+  arrange(desc(User_Score))%>%
+  #top_n(5)
+  slice(1:5)
+hiscore_user$wrapname <- str_wrap(hiscore_user$Name,width=15)
+hiscore_user%>%ggplot(aes(reorder(wrapname,-User_Score),y=User_Score))+
+  geom_bar(stat="identity",fill="#0072B2")+
+  geom_text(aes(label=User_Score),vjust=-.25)+
+  #scale_x_discrete(guide=guide_axis(n.dodge=3))+
+  #scale_x_discrete(labels=abbreviate)+
+  labs(x="Game",y="User Score",title="Highest Scoring Games by User",subtitle="1999-2016")
+```
+
+```{r,message=FALSE,warning=FALSE}
+#Highest Rated Games (Critic)
+hiscore_critic <- vgsale2%>%filter(Critic_Count>=40)%>%
+  select(Name_Platform,Critic_Score)%>%
+  arrange(desc(Critic_Score))%>%
+  slice(1:5)
+hiscore_critic$wrapname <- str_wrap(hiscore_critic$Name_Platform,width=15)
+hiscore_critic%>%ggplot(aes(reorder(wrapname,-Critic_Score),y=Critic_Score))+
+  geom_bar(stat="identity",fill="#0072B2")+
+  geom_text(aes(label=Critic_Score),vjust=-.25)+
+  #scale_x_discrete(guide=guide_axis(n.dodge=3))+
+  #scale_x_discrete(labels=abbreviate)+
+  labs(x="Game",y="Critic Score",title="Highest Scoring Games by Metacritic",subtitle="1999-2016")
+#GTA on multiple platforms...maybe instead of combining names, average the
+#scores for multiples?
+```
+
