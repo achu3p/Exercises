@@ -1,0 +1,292 @@
+---
+output: pdf_document
+---
+```{r setup,include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Dataset: Powerlifting
+```{r,warnings=FALSE,message=FALSE}
+library(tidyverse)
+lift <- read_csv("https://uofi.box.com/shared/static/72tsz9guup6p31wc50zjw7y3lkvutqr5.csv")
+```
+***
+Instructions:
+
+  - keep the following variables: Name, Sex, Event, Equipment, Age, AgeClass, BodyweightKg, WeightClassKg, Best3SquatKg, Best3BenchKg, Best3DeadliftKg, TotalKg, Wilks, IPFPoints
+  - filter to keep female powerlifters in AgeClass 24-34 with SBD as the Event 
+  - remove NA values
+  - rename the data object as **power**
+  
+```{r}
+clean1 <- select(lift,Name,Sex,Event,Equipment,Age,AgeClass,BodyweightKg,WeightClassKg,Best3SquatKg,Best3BenchKg,Best3DeadliftKg,TotalKg,Wilks,IPFPoints)
+clean2 <- filter(clean1,AgeClass=="24-34",Sex=="F",Event=="SBD")
+miss <- unique(c(which(is.na(clean2$Name)),which(is.na(clean2$Sex)),which(is.na(clean2$Event)),which(is.na(clean2$Equipment)),which(is.na(clean2$Age)),which(is.na(clean2$AgeClass)),which(is.na(clean2$BodyweightKg)),which(is.na(clean2$WeightClassKg)),which(is.na(clean2$Best3SquatKg)),which(is.na(clean2$Best3BenchKg)),which(is.na(clean2$Best3DeadliftKg)),which(is.na(clean2$TotalKg)),which(is.na(clean2$Wilks)),which(is.na(clean2$IPFPoints))))
+power <- clean2[-miss,]
+summary(power)
+```
+
+```{r,results=FALSE,warning=FALSE,message=FALSE}
+#convert bw,best squat/bench/deadlift, totalkg to pounds (lb) in new col
+powerlbs <- mutate(power,bodyweightlb=(BodyweightKg*2.205),best3squatlb=(Best3SquatKg*2.205),best3benchlb=(Best3BenchKg*2.205),best3deadliftlb=(Best3DeadliftKg*2.205),totallb=(TotalKg*2.205))
+powerlbs <- select(powerlbs,-c(BodyweightKg,Best3SquatKg,Best3BenchKg,Best3DeadliftKg))
+```
+
+```{r,results=FALSE,warning=FALSE,message=FALSE}
+#multicollinearity, outliers
+powerlbs <- select(powerlbs,-c(totallb))
+powerlbs <- select(powerlbs,-c(TotalKg))
+```
+
+```{r}
+qqnorm(powerlbs$best3deadliftlb)
+```
+
+(The following can be heavily simplified; I'll leave my original
+complex work as it is here.)
+
+```{r}
+#3 sigma rule: Wilks
+mn_wilks <- mean(powerlbs$Wilks)
+sg_wilks <- sd(powerlbs$Wilks)
+tsr_wilks <- which(abs(powerlbs$Wilks-mn_wilks) > (3*sg_wilks))
+length(tsr_wilks)
+```
+```{r}
+powerlbs$Wilks[tsr_wilks]
+```
+
+```{r}
+# box plot rule: Wilks
+q1<-as.vector(quantile(powerlbs$Wilks,1/4))
+q3<-as.vector(quantile(powerlbs$Wilks,3/4))
+iqr <- as.vector(q3-q1)
+lwr_Wilks <- which(powerlbs$Wilks < q1-1.5*iqr)
+upr_Wilks <- which(powerlbs$Wilks > q3+1.5*iqr)
+length(lwr_Wilks);length(upr_Wilks)
+```
+
+```{r}
+# hampel identifier: Wilks
+md_Wilks<-median(powerlbs$Wilks)
+sg2_Wilks<-1.4826*(median(abs(powerlbs$Wilks-md_Wilks)))
+hi_Wilks <- which(abs(powerlbs$Wilks-md_Wilks) > 3*sg2_Wilks)
+length(hi_Wilks)
+```
+
+```{r}
+#3 sigma rule: IPFPoints
+mn_ipf <- mean(powerlbs$IPFPoints)
+sg_ipf <- sd(powerlbs$IPFPoints)
+tsr_ipf <- which(abs(powerlbs$IPFPoints-mn_ipf) > (3*sg_ipf))
+length(tsr_ipf)
+```
+
+```{r}
+# box plot rule: IPFPoints
+q1<-as.vector(quantile(powerlbs$IPFPoints,1/4))
+q3<-as.vector(quantile(powerlbs$IPFPoints,3/4))
+iqr <- as.vector(q3-q1)
+lwr_ipf <- which(powerlbs$IPFPoints < q1-1.5*iqr)
+upr_ipf <- which(powerlbs$IPFPoints > q3+1.5*iqr)
+length(lwr_ipf);length(upr_ipf)
+```
+
+```{r}
+# hampel identifier: IPFPoints
+md_ipf <- median(powerlbs$IPFPoints)
+sg2_ipf <- 1.4826*(median(abs(powerlbs$IPFPoints-md_ipf)))
+hi_ipf <- which(abs(powerlbs$IPFPoints-md_ipf) > 3*sg2_ipf)
+length(hi_ipf)
+```
+
+bodyweightlb
+```{r}
+#3 sigma rule: bodyweightlb
+mn_wt <- mean(powerlbs$bodyweightlb)
+sg_wt <- sd(powerlbs$bodyweightlb)
+tsr_wt <- which(abs(powerlbs$bodyweightlb-mn_wt) > (3*sg_wt))
+length(tsr_wt)
+```
+
+```{r}
+# box plot rule: bodyweightlb
+q1<-as.vector(quantile(powerlbs$bodyweightlb,1/4))
+q3<-as.vector(quantile(powerlbs$bodyweightlb,3/4))
+iqr <- as.vector(q3-q1)
+lwr_wt <- which(powerlbs$bodyweightlb < q1-1.5*iqr)
+upr_wt <- which(powerlbs$bodyweightlb > q3+1.5*iqr)
+length(lwr_wt);length(upr_wt)
+```
+
+```{r}
+# hampel identifier: bodyweightlb
+md_wt <- median(powerlbs$bodyweightlb)
+sg2_wt <- 1.4826*(median(abs(powerlbs$bodyweightlb-md_wt)))
+hi_wt <- which(abs(powerlbs$bodyweightlb-md_wt) > 3*sg2_wt)
+length(hi_wt)
+```
+
+best3squatlb
+```{r}
+#3 sigma rule: best3squatlb
+mn_sqt <- mean(powerlbs$best3squatlb)
+sg_sqt <- sd(powerlbs$best3squatlb)
+tsr_sqt <- which(abs(powerlbs$best3squatlb-mn_sqt) > (3*sg_sqt))
+length(tsr_sqt)
+```
+
+```{r}
+# box plot rule: best3squatlb
+q1<-as.vector(quantile(powerlbs$best3squatlb,1/4))
+q3<-as.vector(quantile(powerlbs$best3squatlb,3/4))
+iqr <- as.vector(q3-q1)
+lwr_sqt <- which(powerlbs$best3squatlb < q1-1.5*iqr)
+upr_sqt <- which(powerlbs$best3squatlb > q3+1.5*iqr)
+length(lwr_sqt);length(upr_sqt)
+```
+
+```{r}
+# hampel identifier: best3squatlb
+md_sqt <- median(powerlbs$best3squatlb)
+sg2_sqt <- 1.4826*(median(abs(powerlbs$best3squatlb-md_sqt)))
+hi_sqt <- which(abs(powerlbs$best3squatlb-md_sqt) > 3*sg2_sqt)
+length(hi_sqt)
+```
+
+best3benchlb
+```{r}
+#3 sigma rule: best3benchlb
+mn_b <- mean(powerlbs$best3benchlb)
+sg_b <- sd(powerlbs$best3benchlb)
+tsr_b <- which(abs(powerlbs$best3benchlb-mn_b) > (3*sg_b))
+length(tsr_b)
+```
+
+```{r}
+# box plot rule: best3benchlb
+q1<-as.vector(quantile(powerlbs$best3benchlb,1/4))
+q3<-as.vector(quantile(powerlbs$best3benchlb,3/4))
+iqr <- as.vector(q3-q1)
+lwr_b <- which(powerlbs$best3benchlb < q1-1.5*iqr)
+upr_b <- which(powerlbs$best3benchlb > q3+1.5*iqr)
+length(lwr_b);length(upr_b)
+```
+
+```{r}
+# hampel identifier: best3benchlb
+md_b <- median(powerlbs$best3benchlb)
+sg2_b <- 1.4826*(median(abs(powerlbs$best3benchlb-md_b)))
+hi_b <- which(abs(powerlbs$best3benchlb-md_b) > 3*sg2_b)
+length(hi_b)
+```
+
+best3deadliftlb
+```{r}
+#3 sigma rule: best3deadliftlb
+mn_d <- mean(powerlbs$best3deadliftlb)
+sg_d <- sd(powerlbs$best3deadliftlb)
+tsr_d <- which(abs(powerlbs$best3deadliftlb-mn_d) > (3*sg_d))
+length(tsr_d)
+```
+
+```{r}
+# box plot rule: best3deadliftlb
+q1<-as.vector(quantile(powerlbs$best3deadliftlb,1/4))
+q3<-as.vector(quantile(powerlbs$best3deadliftlb,3/4))
+iqr <- as.vector(q3-q1)
+lwr_d <- which(powerlbs$best3deadliftlb < q1-1.5*iqr)
+upr_d <- which(powerlbs$best3deadliftlb > q3+1.5*iqr)
+length(lwr_d);length(upr_d)
+```
+
+```{r}
+# hampel identifier: best3deadliftlb
+md_d <- median(powerlbs$best3deadliftlb)
+sg2_d <- 1.4826*(median(abs(powerlbs$best3deadliftlb-md_d)))
+hi_d <- which(abs(powerlbs$best3deadliftlb-md_d) > 3*sg2_d)
+length(hi_d)
+```
+#check for common outliers amongst all 3 methods
+```{r}
+Reduce(intersect,list(tsr_wilks,lwr_Wilks,upr_Wilks,hi_Wilks))
+```
+```{r}
+Reduce(intersect,list(tsr_ipf,lwr_ipf,upr_ipf,hi_ipf))
+```
+```{r}
+Reduce(intersect,list(tsr_wt,upr_wt,hi_wt))
+```
+```{r}
+Reduce(intersect,list(tsr_sqt,lwr_sqt,upr_sqt,hi_sqt))
+```
+```{r}
+Reduce(intersect,list(tsr_b,upr_b,hi_b))
+```
+```{r}
+Reduce(intersect,list(tsr_d,upr_d,lwr_d,hi_d))
+```
+```{r}
+Reduce(intersect,list(tsr_b,upr_b,hi_b,tsr_wt,upr_wt,hi_wt))
+```
+
+```{r}
+powerlbs2 <- powerlbs
+powerlbs3 <- powerlbs2[-c(4185,4463,4692,4782,7997,10386,10387,10541,10699,11005,11006,11211,11650,13093,13328,13734,16607,18232,19031,19228,19229,20587,20694,20695,23325,25155,25164,25253,25346,25588,25785,25821,25938,25948,25990,26004,26394,26736,27272,37496,37551,38917,39174,39175,39212,39621,39685,39794,39796,39856,39908,40172,40173,40265,40266,40458,41201,41203,41329,43475,43486,43575,43621,43663,43760,43799,43800,43802,43975,43976,44138,44253,44286,44287,44387,44512,44695,44743,44744,44782,44879,44927,44928,44975,45086,49782,49810,49847,49919,49970,50373,51201,51557,51665,51756,51999),]
+```
+
+***
+Instructions: Use the `set.seed` random number generator (where the seed number is 448) to select a random sample size of 100 observations of the previous dataset (after removing the 10 outliers). Then, standardize the continuous variables of this random subset.
+```{r}
+set.seed(448)
+rs <- sample(nrow(powerlbs3),100)
+powerlbs0 <- powerlbs3[rs,]
+head(powerlbs0)
+```
+
+```{r}
+powerlbs000 <- select(powerlbs0,-Name,-Sex,-Event,-Equipment,-Age,-AgeClass,-WeightClassKg)
+powerlbs000 <- scale(powerlbs000)
+powerlbs00 <- as.data.frame(powerlbs000)
+```
+***
+Instructions: Use k-means clustering and select 2 clusters. Show the cluster attributes in the form of both 
+
+a) a scatter plot matrix of the 6 continuous variables
+
+b) tables showing the mean and median of these 6 variables.
+
+```{r}
+kc8 <- kmeans(powerlbs00,centers=2)$cluster
+table(kc8)
+```
+a)
+```{r}
+pairs(powerlbs00[,1:6],col=kc8)
+```
+
+b)
+```{r}
+summarise(group_by(powerlbs00,kmeans(powerlbs00,centers=2)$cluster),clustersize=length(Wilks),avgwilks=mean(Wilks),medwilks=median(Wilks),avgipf=mean(IPFPoints),medipf=median(IPFPoints),avgwt=mean(bodyweightlb),medwt=median(bodyweightlb),avgsqt=mean(best3squatlb),medsqt=median(best3squatlb),avgb=mean(best3benchlb),medb=median(best3benchlb),avgd=mean(best3deadliftlb),medd=median(best3deadliftlb))
+```
+
+***
+
+Instructions: Use hierarchical clustering with single linkage and select 2 clusters. Show the cluster attributes in the form of both
+
+a) a scatter plot matrix of the 6 continuous variables
+
+b) tables showing the mean and median of these 6 variables.
+
+```{r}
+d <- dist(powerlbs00, method="euclidean")
+fit9 <- hclust(d,method="single")
+kc9 <- cutree(fit9,k=2)
+```
+a)
+```{r}
+pairs(powerlbs00[,1:6],col=kc9)
+```
+b)
+```{r}
+summarise(group_by(powerlbs00,cutree(fit9,k=2)),clustersize=length(Wilks),avgwilks=mean(Wilks),medwilks=median(Wilks),avgipf=mean(IPFPoints),medipf=median(IPFPoints),avgwt=mean(bodyweightlb),medwt=median(bodyweightlb),avgsqt=mean(best3squatlb),medsqt=median(best3squatlb),avgb=mean(best3benchlb),medb=median(best3benchlb),avgd=mean(best3deadliftlb),medd=median(best3deadliftlb))
